@@ -1,0 +1,21 @@
+Package: DOVE2
+Type: Package
+Title: Measuring the Efficacy of COVID-19 Vaccines
+Version: 1.1
+Date: 2021-06-18
+Author: Yu Gu
+Maintainer: Yu Gu <yugu@live.unc.edu>
+Description: Estimate vaccine efficacy based on Kaplan-Meier estimator, standard Cox and Poisson models, 
+  and the new Cox model. 
+License: GPL-2
+Encoding: UTF-8
+Suggests: rmarkdown
+VignetteBuilder: utils, knitr
+Depends: R (>= 3.5.0), survival
+Imports: Rcpp (>= 1.0.4.6), stats, ggplot2, survival, ggpubr, knitr
+LinkingTo: Rcpp, RcppArmadillo
+RoxygenNote: 7.1.1
+Collate: 'RcppExports.R' 'plot.fig.R' 'poisson.R' 'stdCox.R' 'newCox.R'
+        'km.R' 'dove2.R' 'vaccine.R'
+NeedsCompilation: yes
+Packaged: 2021-06-18 17:39:41 UTC; yugu

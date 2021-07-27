@@ -1,0 +1,308 @@
+---
+title: "DOVE2 -- Durability of Vaccine Efficacy"
+date: June 18, 2021
+output: rmarkdown::pdf_document
+vignette: >
+  %\VignetteIndexEntry{DOVE2-vignette}
+  %\VignetteEngine{knitr::rmarkdown}
+  \usepackage[utf8]{inputenc}
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+opt <- options()
+options(continue="  ", width=70, prompt=" ")
+on.exit(options(opt))
+library(DOVE2, quietly=TRUE)
+```
+
+## Methods
+
+### \textit{Kaplan-Meier Estimator}
+
+In the Kaplan-Meier (KM) method, the event time is measured from the participant's entry time.
+Let $\widehat{G}_0(\cdot)$ and $\widehat{G}_1(\cdot)$ denote the KM estimates of the 
+survival functions for the placebo and vaccine groups, respectively. 
+Then the KM estimates of the cumulative incidence at time $t$ after randomization
+in the placebo and vaccine groups are
+$1-\widehat{G}_0(t)$ and $1-\widehat{G}_1(t)$, respectively. 
+The KM estimate of the vaccine efficacy in reducing the cumulative incidence over
+the time period $(t_0, t]$ is 
+$$
+\widehat{V E}_{C I}\left(t_{0}, t\right)=1-\frac{\widehat{G}_{1}\left(t_{0}\right)-\widehat{G}_{1}(t)}{\widehat{G}_{0}\left(t_{0}\right)-\widehat{G}_{0}(t)},
+$$
+where $t_0$ is set to 4 weeks by default to reflect the ramping vaccine effect after the 1st dose.
+
+### \textit{Standard Cox Model}
+
+In the standard Cox model, the event time is measured from the participant's entry time, and the events that occur during the 
+first 4 weeks are excluded from the analysis. 
+Let $X$ denote the baseline covariates, and $Z$ indicate, by the values 1 versus 0, whether the participant is on vaccine or placebo. 
+The hazard function conditional on $X$ and $Z$ takes the form 
+$$
+\widetilde{\lambda}(t|X, Z) = \widetilde{\lambda}_0(t)e^{\beta^TX+\gamma Z},
+$$
+where $\widetilde{\lambda}_0(\cdot)$ is an arbitrary baseline hazard function, 
+and $\beta$ and $\gamma$ are log hazard ratios.
+We estimate the vaccine efficacy on the hazard rate by $1-e^{\hat{\gamma}}$, 
+where $\hat{\gamma}$ is the maximum partial likelihood estimate of $\gamma$. 
+<!-- We can easily obtain the standard error estimate of this VE estimator by applying the Delta method. -->
+
+### \textit{Standard Poisson Model}
+
+Under the standard Poisson model, we estimate vaccine efficacy by $1-E_1/E_0$,
+where $E_1$ is the number of events that occur after week 4 in the vaccine group,
+and $E_0$ is the corresponding number in the placebo group.
+
+### \textit{New Cox Model}
+
+In the new Cox model, the event time is measured from the start of the clinical trial. 
+We fit the Cox model with a time-varying hazard ratio
+$$
+\lambda(t|X, S) = \lambda_0(t)e^{\beta^TX+\eta(t-S) I(S<t)},
+$$
+where $S$ is the calendar time when the 1st dose occurs, 
+$\lambda_0(\cdot)$ is an arbitrary baseline hazard function, 
+and $\eta(\cdot)$ is the log hazard ratio. 
+We center each component of $X$ at its sample medium, such that $\lambda_0(\cdot)$ 
+pertains to the medium of each covariate.
+We assume a piece-wise linear form for the log hazard ratio:
+$$
+\eta(t) = \gamma_1t+\gamma_2(t-t_1)_+ + \gamma_3(t-t_2)_+ +\dots + \gamma_K(t-t_{K-1})_+,
+$$
+where $t_1, \dots, t_{K-1}$ are the $(K-1)$ pre-specified knots, 
+and $\gamma_1, \dots, \gamma_K$ are the $K$ parameters to be estimated from the data.
+By default, two knots are placed at 30 and 60 days, so we only need to estimate three parameters 
+in order to estimate $\eta(\cdot)$. 
+We denote the maximum partial likelihood estimate of $\eta(\cdot)$ by $\hat{\eta}(\cdot)$,  
+and denote the Breslow estimator of the cumulative baseline hazard function by $\widehat{\Lambda}_0(\cdot)$.
+Then the estimated cumulative incidence at time $t$ after the time of vaccination $s$ is given by
+$$
+1-\exp\left\{-\int_{s}^{s+t}e^{\hat{\eta}(u-s)}d\widehat{\Lambda}_0(u) \right\}
+$$
+for the vaccine group and 
+$$
+1-\exp\left\{\widehat{\Lambda}_0(s)-\widehat{\Lambda}_0(s+t) \right\}
+$$
+for the placebo group.
+The vaccine efficacy in reducing the cumulative incidence over the time period $(t_0, t]$ 
+for the individuals who received the 1st dose at time $s$ can be estimated by 
+$$
+\widehat{V E}_{C I}\left(t_{0}, t ; s \right) = 1-\frac{\exp\left\{-\int_{s}^{s+t_0}e^{\hat{\eta}(u-s)}d\widehat{\Lambda}_0(u) \right\}-\exp\left\{-\int_{s}^{s+t}e^{\hat{\eta}(u-s)}d\widehat{\Lambda}_0(u) \right\}}{\exp\left\{\widehat{\Lambda}_0(s)-\widehat{\Lambda}_0(s+t_0) \right\}-\exp\left\{\widehat{\Lambda}_0(s)-\widehat{\Lambda}_0(s+t) \right\}}.
+$$
+In addition, we can estimate the vaccine efficacy in reducing the hazard rate 
+at time $t$ after the 1st dose by
+$$
+\widehat{V E}_{H R}(t)=1-e^{\hat{\eta}(t)},
+$$
+which is independent of the vaccination time.
+We further construct the 95\% confidence interval for $V E_{H R}(t)$ 
+based on the 95\% confidence interval for $\eta(t)$.
+
+## Software 
+
+The \textbf{DOVE2} package takes as input a rectangular data set with the following information:
+
+\begin{itemize}
+\item \textbf{Entry time}: Calendar time when the participant entered the trial (in days).
+
+\item \textbf{Event time}: Calendar time when the participant experienced symptomatic COVID-19 
+  or when the follow-up ended, whichever occurred first (in days).
+  
+\item \textbf{Event status}: Binary indicator on whether symptomatic COVID-19 occurred 
+  before the end of follow-up.
+  
+\item \textbf{Vaccination status}: Binary indicator taking value 1 if
+  vaccination occurred before the end of follow-up and 0 otherwise.
+  
+\item \textbf{Vaccination time}: Calendar time when the 1st dose of vaccination took place 
+  (in days, with an arbitrary value if the participant was not vaccinated).
+  
+\item \textbf{Covariates}: Baseline covariates (e.g., priority group, age, sex, ethnicity).
+\end{itemize}
+
+\vspace{.15in}
+
+The primary analysis tool of the package is \textit{dove2()}, 
+which implements all four aforementioned methods and 
+generates a figure that depicts the estimation results 
+of the cumulative incidence, $VE_{CI}$ and $VE_{HR}$
+based on the Kaplan-Meier method or the new Cox model.
+
+In addition, the package includes a convenience function
+\textit{vaccine()}, which is used to simplify the specification of 
+input variables required in the model statement of \textit{dove2()}, similar in 
+spirit to the \textit{cluster()} function of the \textbf{survival} package. 
+
+Finally, a simulated dataset is provided to illustrate the use of the software.
+
+### \textit{vaccine()}
+
+This convenience function is used as a component of the right-hand-side
+of a formula object for the sole purpose of simplifying the specification
+of required input variables: entry time, vaccination status
+and vaccination time. This function is not intended to be used as
+a stand-alone feature; though for completeness, the function ensures
+that the input data obey basic constraints and returns 
+the data in a predictable format for use in internal functions.
+
+\vspace{.15in}
+
+The usage is
+```{r eval=FALSE}
+vaccine(entry_time, vaccination_status, vaccination_time)
+```
+where \texttt{entry\_time} is the time when the participant entered the trial;
+\texttt{vaccination\_status} is the binary indicator taking value 1 if
+vaccination occurred before the end of follow-up and 0 otherwise;
+\texttt{vaccination\_time} is the time when the 1st dose of vaccination took place 
+(with an arbitrary value if the participant was not vaccinated). 
+
+\vspace{.15in}
+
+Note that all the time variables are measured from the beginning of the 
+clinical trial and are specified in units of days. 
+For each individual, the \texttt{entry\_time}, \texttt{event\_time} and \texttt{vaccination\_time}
+must satisfy \texttt{entry\_time} $\le$ \texttt{event\_time} and \texttt{entry\_time} $\le$ \texttt{vaccination\_time}. 
+If \texttt{entry\_time} > \texttt{event\_time} or \texttt{entry\_time} > \texttt{vaccination\_time}, 
+the case will be removed from the analysis and a message will be generated.
+The software automatically classify all participants into the placebo 
+and vaccine groups according to whether they were vaccinated at study entry 
+(i.e., \texttt{vaccination\_time} = \texttt{entry\_time}). 
+
+### \textit{dove2()}
+
+This function is the primary tool of \textbf{DOVE2}. 
+The value object returned contains the estimation results of vaccine efficacy based on 
+each of the four methods. Graphical depictions of the estimates by the Kaplan-Meier 
+method and the new Cox model can be generated upon request.
+
+\vspace{.15in}
+
+The function call takes the following form:
+
+```{r eval=FALSE}
+dove2(formula, data, changePts = c(30L, 60L), plots = TRUE)
+```
+where 
+\begin{itemize}
+\item \texttt{formula} is a model statement. See below for further details. 
+\item \texttt{data} is the data.frame object containing all required data
+as previously described.
+\item \texttt{changePts} is a numerical vector object to specify the change 
+points (in days) of the piece-wise log-linear hazard ratio. 
+The default change points are 30 and 60 days. 
+\item \texttt{plots} is a logical object indicating whether graphical forms of the estimated
+vaccine efficacy in reducing the cumulative incidence, $VE_{CI}$, and
+in reducing the hazard rate, $VE_{HR}$, are to be generated. 
+If TRUE (default), the plots will be generated and saved to a PDF file 
+named ``figure.pdf'' in the current working directory. 
+\end{itemize}
+
+\vspace{.15in}
+
+The model statement is a formula object. The left-hand-side is an
+object returned by the \textit{vaccine()} function and specifies all
+time variables. The right-hand-side contains all baseline covariates;
+a model without baseline covariates is allowed. 
+The \texttt{formula} input takes the following general structure
+
+```{r eval=FALSE}
+Surv(event_time, event_status) ~ covariates + 
+  vaccine(entry_time, vaccination_status, vaccination_time)
+```
+
+where \texttt{entry\_time}, \texttt{event\_time}, \texttt{event\_status}, \texttt{vaccination\_status}, \texttt{vaccination\_time}, 
+and \texttt{covariates} are used here as place holders indicating the data that are to be provided; 
+they are to be replaced by the appropriate variable names in the header of the input data.
+
+\vspace{.15in}
+
+The value object returned by \textit{dove2()} is a list containing four elements, 
+one for each method. Specifically, 
+\begin{itemize}
+\item \textbf{Kaplan-Meier method}: A list containing two elements: 
+  \begin{itemize}
+  \item The jump points and survival probabilities of the KM estimates 
+    for both the placebo and the vaccine groups.
+  \item The estimated $VE_{CI}(t_0, t)$ at all jump points, 
+    excluding the first 4 weeks of events after the 1st dose.
+  \end{itemize}
+\item \textbf{Standard Cox model}: A vector of the estimated vaccine efficacy and its standard error.
+\item \textbf{Standard Poisson model}: A scalar of the estimated vaccine efficacy.
+\item \textbf{New Cox model}: A list containing ten data frames:
+  \begin{itemize}
+  \item The estimated cumulative incidence for individuals who were vaccinated on the following four dates:
+    (1) first entry time; (2) medium entry time; (3) last entry time; (4) last entry time + 2 months. 
+  \item The estimated $VE_{CI}(t_0, t; s)$ for individuals who were vaccinated at the above four dates.
+  \item The estimated $VE_{HR}(t)$ and its 95\% confidence interval.
+  \item The estimation results on the hazard ratio of each covariate.
+  \end{itemize}
+\end{itemize}
+
+## Illustration
+
+We use the dataset `dove2Data' provided with the package for illustration.
+This dataset was simulated under an unblinded, priority-tier dependent crossover 
+design and contains the following observations for each of the 40,000 participants:
+
+\begin{itemize}
+\item \textbf{entry.time}: The entry time in days.
+\item \textbf{event.time}: The time to event or censoring in days, whichever occurred first.
+\item \textbf{event.status}: The binary indicator on whether the event occurred before censoring.
+\item \textbf{vaccine.time}: The time of the 1st dose in days.
+\item \textbf{vaccine.status}: The binary indicator on whether the vaccination occurred before censoring.
+\item \textbf{priority}: A composite baseline priority score taking values 1-5.
+\item \textbf{sex}: A binary indicator of sex (male/female).
+\end{itemize}
+
+\vspace{.15in}
+  
+The data can be loaded in the usual way
+```{r}
+data(dove2Data)
+```
+
+```{r}
+head(dove2Data)
+```
+
+\vspace{.15in}
+
+In this analysis, we will include in our model statement both baseline covariates. 
+We will use the default values for the other arguments of the \textit{dove2()} function.
+The function call takes only one line of code
+
+```{r}
+result <- dove2(formula = Surv(event.time, event.status) ~ priority + sex + 
+                  vaccine(entry.time, vaccine.status, vaccine.time), 
+                data = dove2Data)
+```
+
+\vspace{.15in}
+ 
+By default, a figure (as is shown in Figure \ref{fig: dove2Figs}) will be generated and saved to ``figure.pdf'' in the current working directory.
+
+```{r pressure, echo=FALSE, fig.align='center', fig.cap="\\label{fig: dove2Figs}Estimation of vaccine efficacy in a clinical trial: A. Kaplan-Meier estimates of the cumulative incidence of disease for the vaccine and placebo groups and the cumulative incidence curves for participants who were vaccinated at various dates under the new Cox model; B. Estimates of $VE_{CI}$ based on the Kaplan-Meier method and the new Cox model for participants who were vaccinated at various dates; C. Estimates and $95\\%$ confidence intervals for $VE_{HR}$ under the new Cox model.", out.width = '100%'}
+knitr::include_graphics("figure.pdf")
+```
+
+\vspace{.15in}
+
+In addition to the figure, the function returns a list of four elements, one for each method. Some of them are used internally to generate the figure.
+
+```{r}
+str(result, max=2)
+```
+
+\vspace{.15in}
+
+In particular, under the new Cox model, the estimated (log) hazard ratio of each covariate, 
+together with the estimated standard error, the $95\%$ confidence 
+interval, and the two-sided p-value for testing no covariate effect can be obtained by  
+      
+```{r}
+result$newCox$covariates
+```
+
+When no baseline covariates are provided, this element will be NA.
